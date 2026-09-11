@@ -9,13 +9,13 @@ Two failure modes, both needing attention, at two different timescales:
 1. **Stockouts that delay production** — the mill needs to know a SKU is heading toward a stockout *before* it happens, with enough lead time to actually order more, not just a same-day alert once it's already too late.
 2. **Overstock tying up working capital** — SKUs sitting on more inventory than their replenishment cycle justifies, quietly costing money without anyone noticing until someone asks why.
 
-The deliverable requested was a **self-service tool** the Supply Chain team can open themselves — not a one-off analysis — showing upcoming demand per SKU, with each SKU that needs attention flagged in plain language, before it becomes a problem.
+The deliverable requested was a **self-service tool** the Supply Chain team can open themselves, not a one-off analysis — showing upcoming demand per SKU, with each SKU that needs attention flagged in plain language, before it becomes a problem.
 
 ## Approach
 
 The system is a two-tier pipeline, deliberately separating the part that genuinely needs machine learning from the part that doesn't:
 
-**Tier 1 — Demand Forecasting (LightGBM regressor).** A single model, pooled across all SKUs, predicts daily `units_sold`. Trained on leakage-safe lag and rolling-window features (`lag1`, `lag7`, 7/14-day moving averages, volatility, momentum), calendar features, and category-hierarchy signals. Evaluated with MAE and WAPE (chosen over RMSE, which over-penalizes sporadic zero-demand days). LightGBM was selected after a head-to-head comparison against XGBoost, CatBoost, and a classical per-SKU exponential smoothing (ETS) baseline — the three ML models were statistically tied and all clearly outperformed ETS, justifying the added complexity of a pooled ML approach over a simpler classical one.
+**Tier 1 — Demand Forecasting (LightGBM regressor).** A single model, pooled across all SKUs, predicts daily `units_sold`. Trained on leakage-safe lag and rolling-window features (`lag1`, `lag7`, 7/14-day moving averages, volatility, momentum), calendar features, and category-hierarchy signals. Evaluated with MAE and WAPE (chosen over RMSE, which over-penalizes sporadic zero-demand days). LightGBM was selected after a head-to-head comparison against XGBoost, CatBoost, and a classical per-SKU exponential smoothing (ETS) baseline, the three ML models were statistically tied and all clearly outperformed ETS, justifying the added complexity of a pooled ML approach over a simpler classical one.
 
 **Tier 2 — Inventory Risk Triage (deterministic logic, not a second model).** Rather than training a classifier to predict inventory status, this tier applies a transparent reorder-point formula directly to Tier 1's forecast:
 
@@ -23,9 +23,9 @@ The system is a two-tier pipeline, deliberately separating the part that genuine
 - `max_stock_days = ROP_days × 1.35` — the healthy ceiling, sized on standard FMCG replenishment-cycle guidance (0.5–1.0× lead time above the reorder point), not an arbitrary multiplier.
 - Tier 1's forecast is walked forward, day by day, per SKU, out to that SKU's own lead time (not a fixed horizon for every SKU) — projecting stock depletion under a conservative no-incoming-receipts assumption — to determine **whether and when** a SKU is projected to breach its reorder point, or how long it will sit above the healthy ceiling.
 
-This tier was deliberately kept as explicit, auditable arithmetic rather than a second trained model — the label a classifier would learn to predict is fully determined by known thresholds, so training a black-box model on it would only reproduce the same rule with less transparency, not add predictive value. This is also how real supply chain platforms are structured: a statistical forecasting engine feeding a deterministic policy engine.
+This tier was deliberately kept as explicit, auditable arithmetic rather than a second trained model, the label a classifier would learn to predict is fully determined by known thresholds, so training a black-box model on it would only reproduce the same rule with less transparency, not add predictive value. This is also how real supply chain platforms are structured: a statistical forecasting engine feeding a deterministic policy engine.
 
-**Output:** each SKU gets a status computed from **today's real stock position** (not a forward-projected snapshot, which would be misleadingly depleted by the projection's own no-replenishment assumption), plus a separate forward-looking `days_to_breach` — the actual early-warning signal — and an `overstock_days_in_horizon` count for capital-tied-up risk.
+**Output:** each SKU gets a status computed from **today's real stock position** (not a forward-projected snapshot, which would be misleadingly depleted by the projection's own no-replenishment assumption), plus a separate forward-looking `days_to_breach`- the actual early-warning signal and an `overstock_days_in_horizon` count for capital-tied-up risk.
 
 **Delivery:** a Streamlit web app, deployed from this repo, giving the Supply Chain team a plant-wide overview, a per-SKU inspector with forecast chart, and a full triage board across all active SKUs.
 
